@@ -12,8 +12,20 @@ const CREDIT_COST_PER_CALL = 1; // cost per proxied request
  * This makes the router fully testable with mocked services.
  */
 export function createGatewayRouter(deps: GatewayDeps): Router {
-  const { billing, rateLimiter, usageStore, upstreamUrl, apiKeys } = deps;
+  const { billing, rateLimiter, usageStore, upstreamUrl } = deps;
   const router = Router();
+  const authMiddleware = deps.authMiddleware ?? createMapBackedGatewayApiKeyAuthMiddleware({
+    apiKeys: deps.apiKeys,
+    resolveApiContext(req) {
+      return {
+        api: { id: req.params.apiId },
+        endpoint: { endpointId: 'legacy', path: '*', priceUsdc: CREDIT_COST_PER_CALL },
+      };
+    },
+    getApiId(api) {
+      return String(api.id);
+    },
+  });
 
   // Validation schema for API ID parameter
   const apiIdParamsSchema = z.object({
@@ -58,7 +70,7 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
 
     // 3. Billing deduction
     const billingResult = await billing.deductCredit(
-      keyRecord.developerId,
+      keyRecord.userId,
       CREDIT_COST_PER_CALL,
     );
     if (!billingResult.success) {
@@ -95,10 +107,10 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
       id: randomUUID(),
       requestId: randomUUID(), // legacy gateway doesn't carry request ID
       apiKey: apiKeyHeader,
-      apiKeyId: keyRecord.key,
+      apiKeyId: keyRecord.id,
       apiId: keyRecord.apiId,
       endpointId: 'legacy',
-      userId: keyRecord.developerId,
+      userId: keyRecord.userId,
       amountUsdc: CREDIT_COST_PER_CALL,
       statusCode: upstreamStatus,
       timestamp: new Date().toISOString(),
