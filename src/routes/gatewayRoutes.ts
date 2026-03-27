@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { GatewayDeps } from '../types/gateway.js';
 import { startUpstreamTimer } from '../metrics.js';
+import { createMapBackedGatewayApiKeyAuthMiddleware } from '../middleware/gatewayApiKeyAuth.js';
 
 const CREDIT_COST_PER_CALL = 1; // cost per proxied request
 
@@ -10,8 +11,20 @@ const CREDIT_COST_PER_CALL = 1; // cost per proxied request
  * This makes the router fully testable with mocked services.
  */
 export function createGatewayRouter(deps: GatewayDeps): Router {
-  const { billing, rateLimiter, usageStore, upstreamUrl, apiKeys } = deps;
+  const { billing, rateLimiter, usageStore, upstreamUrl } = deps;
   const router = Router();
+  const authMiddleware = deps.authMiddleware ?? createMapBackedGatewayApiKeyAuthMiddleware({
+    apiKeys: deps.apiKeys,
+    resolveApiContext(req) {
+      return {
+        api: { id: req.params.apiId },
+        endpoint: { endpointId: 'legacy', path: '*', priceUsdc: CREDIT_COST_PER_CALL },
+      };
+    },
+    getApiId(api) {
+      return String(api.id);
+    },
+  });
 
   /**
    * POST /api/gateway/:apiId
@@ -24,17 +37,12 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
    *   5. Record usage event
    *   6. Return upstream response
    */
-  router.all('/:apiId', async (req: Request, res: Response) => {
-    // 1. Validate API key
-    const apiKeyHeader = req.headers['x-api-key'] as string | undefined;
-    if (!apiKeyHeader) {
-      res.status(401).json({ error: 'Unauthorized: missing x-api-key header' });
-      return;
-    }
+  router.all('/:apiId', authMiddleware, async (req: Request, res: Response) => {
+    const apiKeyHeader = req.apiKeyValue;
+    const keyRecord = req.apiKeyRecord as { id: string; userId: string; apiId: string } | undefined;
 
-    const keyRecord = apiKeys.get(apiKeyHeader);
-    if (!keyRecord || keyRecord.apiId !== req.params.apiId) {
-      res.status(401).json({ error: 'Unauthorized: invalid API key' });
+    if (!apiKeyHeader || !keyRecord) {
+      res.status(500).json({ error: 'Gateway authentication context missing' });
       return;
     }
 
@@ -49,7 +57,7 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
 
     // 3. Billing deduction
     const billingResult = await billing.deductCredit(
-      keyRecord.developerId,
+      keyRecord.userId,
       CREDIT_COST_PER_CALL,
     );
     if (!billingResult.success) {
@@ -86,10 +94,10 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
       id: randomUUID(),
       requestId: randomUUID(), // legacy gateway doesn't carry request ID
       apiKey: apiKeyHeader,
-      apiKeyId: keyRecord.key,
+      apiKeyId: keyRecord.id,
       apiId: keyRecord.apiId,
       endpointId: 'legacy',
-      userId: keyRecord.developerId,
+      userId: keyRecord.userId,
       amountUsdc: CREDIT_COST_PER_CALL,
       statusCode: upstreamStatus,
       timestamp: new Date().toISOString(),
