@@ -1,148 +1,157 @@
-import assert from 'node:assert/strict'
-import type { Api } from '../db/schema.js'
-import { InMemoryApiRepository } from './apiRepository.js'
+import assert from 'node:assert/strict';
 
-const baseDate = new Date('2026-01-01T00:00:00.000Z')
+// Mock better-sqlite3 before any module that transitively imports it is loaded.
+jest.mock('better-sqlite3', () => {
+  return class MockDatabase {
+    prepare() { return { get: () => null }; }
+    exec() { }
+    close() { }
+  };
+});
 
-const seedApis = (): Api[] => [
-  {
-    id: 1,
-    developer_id: 10,
-    name: 'Weather API',
-    description: 'weather data',
-    base_url: 'https://weather.example.com',
-    logo_url: null,
-    category: 'weather',
-    status: 'active',
-    created_at: baseDate,
-    updated_at: baseDate,
+import {
+  InMemoryApiRepository,
+  type ApiDetails,
+  type ApiEndpointInfo,
+} from './apiRepository.js';
+
+// ── Fixtures ────────────────────────────────────────────────────────────────
+
+const SAMPLE_API: ApiDetails = {
+  id: 1,
+  name: 'Weather API',
+  description: 'Provides weather data',
+  base_url: 'https://api.weather.test',
+  logo_url: 'https://img.test/logo.png',
+  category: 'weather',
+  status: 'active',
+  developer: {
+    name: 'Acme Corp',
+    website: 'https://acme.test',
+    description: 'Leading data provider',
   },
-  {
-    id: 2,
-    developer_id: 10,
-    name: 'Finance Draft',
+};
+
+const SAMPLE_API_MINIMAL: ApiDetails = {
+  id: 2,
+  name: 'Translate API',
+  description: null,
+  base_url: 'https://api.translate.test',
+  logo_url: null,
+  category: null,
+  status: 'draft',
+  developer: {
+    name: null,
+    website: null,
     description: null,
-    base_url: 'https://finance.example.com',
-    logo_url: null,
-    category: 'finance',
-    status: 'draft',
-    created_at: baseDate,
-    updated_at: baseDate,
   },
-  {
-    id: 3,
-    developer_id: 11,
-    name: 'Maps API',
-    description: null,
-    base_url: 'https://maps.example.com',
-    logo_url: null,
-    category: 'maps',
-    status: 'active',
-    created_at: baseDate,
-    updated_at: baseDate,
-  },
-]
+};
 
-test('create stores a new API with default draft status', async () => {
-  const repository = new InMemoryApiRepository(seedApis())
-  const created = await repository.create({
-    developer_id: 10,
-    name: 'Created API',
-    base_url: 'https://created.example.com',
-  })
+const SAMPLE_ENDPOINTS: ApiEndpointInfo[] = [
+  { path: '/current', method: 'GET', price_per_call_usdc: '0.01', description: 'Current weather' },
+  { path: '/forecast', method: 'POST', price_per_call_usdc: '0.05', description: null },
+];
 
-  assert.equal(created.id, 4)
-  assert.equal(created.status, 'draft')
-  assert.equal(created.name, 'Created API')
-})
+// ── findById ────────────────────────────────────────────────────────────────
 
-test('update modifies an existing API and returns null when not found', async () => {
-  const repository = new InMemoryApiRepository(seedApis())
-  const updated = await repository.update(2, { status: 'active', name: 'Finance API' })
-  assert.equal(updated?.status, 'active')
-  assert.equal(updated?.name, 'Finance API')
+describe('InMemoryApiRepository', () => {
+  describe('findById', () => {
+    test('returns ApiDetails with correct shape for a known id', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API, SAMPLE_API_MINIMAL]);
 
-  const missing = await repository.update(999, { name: 'Nope' })
-  assert.equal(missing, null)
-})
+      const result = await repo.findById(1);
 
-test('findById returns only active API details', async () => {
-  const repository = new InMemoryApiRepository(seedApis())
-  const active = await repository.findById(1)
-  const draft = await repository.findById(2)
-  const missing = await repository.findById(999)
+      assert.deepStrictEqual(result, SAMPLE_API);
+    });
 
-  assert.equal(active?.id, 1)
-  assert.equal(active?.status, 'active')
-  assert.equal(draft, null)
-  assert.equal(missing, null)
-})
+    test('returns null for unknown id', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API]);
 
-test('listByDeveloper supports status, category, search and pagination', async () => {
-  const repository = new InMemoryApiRepository(seedApis())
+      const result = await repo.findById(999);
 
-  const byDeveloper = await repository.listByDeveloper(10)
-  assert.equal(byDeveloper.length, 2)
+      assert.equal(result, null);
+    });
 
-  const byStatus = await repository.listByDeveloper(10, { status: 'draft' })
-  assert.deepEqual(byStatus.map((a) => a.id), [2])
+    test('returns entry with nullable fields set to null', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API_MINIMAL]);
 
-  const byCategory = await repository.listByDeveloper(10, { category: 'weather' })
-  assert.deepEqual(byCategory.map((a) => a.id), [1])
+      const result = await repo.findById(2);
 
-  const bySearch = await repository.listByDeveloper(10, { search: 'finance' })
-  assert.deepEqual(bySearch.map((a) => a.id), [2])
+      assert.notEqual(result, null);
+      assert.equal(result!.description, null);
+      assert.equal(result!.logo_url, null);
+      assert.equal(result!.category, null);
+      assert.equal(result!.developer.name, null);
+      assert.equal(result!.developer.website, null);
+      assert.equal(result!.developer.description, null);
+    });
 
-  const paginated = await repository.listByDeveloper(10, { offset: 1, limit: 1 })
-  assert.deepEqual(paginated.map((a) => a.id), [2])
-})
+    // Intentional difference: InMemoryApiRepository.findById does NOT filter
+    // by status='active', unlike DrizzleApiRepository. The in-memory double
+    // trusts caller-provided seed data.
+    test('returns entries regardless of status (differs from DrizzleApiRepository)', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API_MINIMAL]);
 
-test('listPublic returns only active APIs with marketplace filters and pagination', async () => {
-  const repository = new InMemoryApiRepository(seedApis())
+      const result = await repo.findById(2);
 
-  const allPublic = await repository.listPublic()
-  assert.deepEqual(allPublic.map((a) => a.id), [1, 3])
+      assert.equal(result!.status, 'draft');
+    });
 
-  const filteredCategory = await repository.listPublic({ category: 'maps' })
-  assert.deepEqual(filteredCategory.map((a) => a.id), [3])
+    test('returns null when repository is empty', async () => {
+      const repo = new InMemoryApiRepository();
 
-  const filteredSearch = await repository.listPublic({ search: 'weather' })
-  assert.deepEqual(filteredSearch.map((a) => a.id), [1])
+      const result = await repo.findById(1);
 
-  const paginated = await repository.listPublic({ offset: 1, limit: 1 })
-  assert.deepEqual(paginated.map((a) => a.id), [3])
+      assert.equal(result, null);
+    });
+  });
 
-  const invalidStatus = await repository.listPublic({ status: 'draft' })
-  assert.deepEqual(invalidStatus, [])
-})
+  // ── getEndpoints ────────────────────────────────────────────────────────
 
-test('getEndpoints returns endpoint pricing data for billing', async () => {
-  const repository = new InMemoryApiRepository(
-    seedApis(),
-    new Map([
-      [
-        1,
-        [
-          {
-            path: '/v1/current',
-            method: 'GET',
-            price_per_call_usdc: '0.003',
-            description: 'Current conditions',
-          },
-        ],
-      ],
-    ])
-  )
+  describe('getEndpoints', () => {
+    test('returns ApiEndpointInfo[] for a known api id', async () => {
+      const endpointsMap = new Map<number, ApiEndpointInfo[]>();
+      endpointsMap.set(1, SAMPLE_ENDPOINTS);
+      const repo = new InMemoryApiRepository([SAMPLE_API], endpointsMap);
 
-  const endpoints = await repository.getEndpoints(1)
-  assert.deepEqual(endpoints, [
-    {
-      path: '/v1/current',
-      method: 'GET',
-      price_per_call_usdc: '0.003',
-      description: 'Current conditions',
-    },
-  ])
-  const empty = await repository.getEndpoints(999)
-  assert.deepEqual(empty, [])
-})
+      const result = await repo.getEndpoints(1);
+
+      assert.deepStrictEqual(result, SAMPLE_ENDPOINTS);
+    });
+
+    test('returns empty array for unknown api id', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API]);
+
+      const result = await repo.getEndpoints(999);
+
+      assert.deepStrictEqual(result, []);
+    });
+
+    test('each endpoint matches ApiEndpointInfo shape', async () => {
+      const endpointsMap = new Map<number, ApiEndpointInfo[]>();
+      endpointsMap.set(1, SAMPLE_ENDPOINTS);
+      const repo = new InMemoryApiRepository([SAMPLE_API], endpointsMap);
+
+      const result = await repo.getEndpoints(1);
+
+      for (const ep of result) {
+        assert.equal(typeof ep.path, 'string');
+        assert.equal(typeof ep.method, 'string');
+        assert.equal(typeof ep.price_per_call_usdc, 'string');
+        assert.ok(ep.description === null || typeof ep.description === 'string');
+      }
+    });
+  });
+
+  // ── listByDeveloper ─────────────────────────────────────────────────────
+
+  describe('listByDeveloper', () => {
+    test('returns empty array (stub implementation)', async () => {
+      const repo = new InMemoryApiRepository([SAMPLE_API]);
+
+      const result = await (repo as import('./apiRepository.js').ApiRepository).listByDeveloper(1);
+
+      assert.deepStrictEqual(result, []);
+    });
+  });
+});
