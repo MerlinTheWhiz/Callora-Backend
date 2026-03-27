@@ -260,6 +260,13 @@ describe('requireAuth – rejects unauthenticated requests on all protected rout
 
 describe('requireAuth – accepts valid credentials on protected routes', () => {
   let app: express.Express;
+  const originalJwtSecret = process.env.JWT_SECRET;
+
+  const bearerToken = () =>
+    signTestToken({
+      userId: 'user-42',
+      walletAddress: 'GDTEST123STELLAR',
+    });
 
   beforeAll(() => {
     process.env.JWT_SECRET = TEST_JWT_SECRET;

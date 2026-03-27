@@ -6,52 +6,30 @@
  */
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'events';
-import { afterEach, beforeEach, describe, test } from 'node:test';
 import { calloraEvents } from './event.emitter.js';
 import { WebhookStore } from '../webhooks/webhook.store.js';
-import { dispatchToAll } from '../webhooks/webhook.dispatcher.js';
 import type { 
     WebhookConfig, 
-    WebhookEventType, 
-    WebhookPayload,
     NewApiCallData,
     SettlementCompletedData,
     LowBalanceAlertData 
 } from '../webhooks/webhook.types.js';
 
-// Mock modules
-const mockDispatchToAll = async (configs: WebhookConfig[], payload: WebhookPayload): Promise<void> => {
-    // Simulate async webhook dispatch with potential failures
-    await Promise.allSettled(
-        configs.map(async (cfg) => {
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
-            if (cfg.url.includes('fail')) {
-                throw new Error(`Webhook delivery failed for ${cfg.url}`);
-            }
-        })
-    );
-};
-
-// Store original functions
-let originalDispatchToAll: typeof dispatchToAll;
+jest.mock('../webhooks/webhook.dispatcher.js', () => ({
+    dispatchToAll: jest.fn(async () => undefined),
+}));
 
 describe('Event Emitter - Memory Leak Safety', () => {
     beforeEach(() => {
         // Clear webhook store before each test
         WebhookStore.clear();
         
-        // Mock dispatchToAll to avoid actual HTTP calls
-        originalDispatchToAll = dispatchToAll;
-        // We'll replace this in the actual test setup
     });
 
     afterEach(() => {
         // Clean up webhook store after each test
         WebhookStore.clear();
         
-        // Restore original function
-        // (In a real implementation, you'd use dependency injection)
     });
 
     test('event listeners are properly registered on module load', () => {
@@ -214,17 +192,6 @@ describe('Event Emitter - Memory Leak Safety', () => {
             creditsUsed: 5
         };
 
-        // Capture the payload by temporarily replacing dispatchToAll
-        let capturedPayload: WebhookPayload | null = null;
-        const originalDispatch = dispatchToAll;
-        const mockDispatch = async (configs: WebhookConfig[], payload: WebhookPayload) => {
-            capturedPayload = payload;
-            // Don't actually dispatch
-        };
-
-        // This would require dependency injection in the actual implementation
-        // For now, we'll test the event emission behavior
-        
         calloraEvents.emit('new_api_call', 'dev_payload_test', apiCallData);
         
         await new Promise(resolve => setTimeout(resolve, 50));

@@ -103,6 +103,13 @@ export const config = {
     sorobanRpcUrl: env.SOROBAN_RPC_URL,
     horizonUrl: env.HORIZON_URL,
   },
+  stellar: {
+    ...activeConfig,
+    networks: {
+      testnet: testnetConfig,
+      mainnet: mainnetConfig,
+    },
+  },
 };
 
 /**

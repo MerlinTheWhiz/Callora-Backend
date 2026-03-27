@@ -137,4 +137,34 @@ The app validates all environment variables at startup using [Zod](https://zod.d
 - Shutdown hooks are registered with `process.once(...)` to avoid duplicate execution during restarts.
 - The dev workflow (`npm run dev` with `tsx watch`) is preserved. Restarts trigger the same graceful path instead of abrupt termination.
 
+### Stellar/Soroban Network Configuration
+
+Set one active network per deployment. The backend reads `STELLAR_NETWORK` first, then `SOROBAN_NETWORK` as a fallback.
+
+```bash
+# Select exactly one active network per deployment
+STELLAR_NETWORK=testnet   # or: mainnet
+```
+
+Per-network values:
+
+```bash
+# Testnet values
+STELLAR_TESTNET_HORIZON_URL=https://horizon-testnet.stellar.org
+SOROBAN_TESTNET_RPC_URL=https://soroban-testnet.stellar.org
+STELLAR_TESTNET_VAULT_CONTRACT_ID=CC...TESTNET_VAULT
+STELLAR_TESTNET_SETTLEMENT_CONTRACT_ID=CC...TESTNET_SETTLEMENT
+
+# Mainnet values
+STELLAR_MAINNET_HORIZON_URL=https://horizon.stellar.org
+SOROBAN_MAINNET_RPC_URL=https://soroban-mainnet.stellar.org
+STELLAR_MAINNET_VAULT_CONTRACT_ID=CC...MAINNET_VAULT
+STELLAR_MAINNET_SETTLEMENT_CONTRACT_ID=CC...MAINNET_SETTLEMENT
+```
+
+Notes:
+- Do not point a testnet deployment at mainnet URLs or contract IDs (or vice versa).
+- Deposit transaction building uses the configured network Horizon URL and validates vault contract ID when configured.
+- Soroban settlement client uses the configured network RPC URL and settlement contract ID.
+
 This repo is part of [Callora](https://github.com/your-org/callora). Frontend: `callora-frontend`. Contracts: `callora-contracts`.
