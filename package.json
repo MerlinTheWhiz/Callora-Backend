@@ -14,7 +14,7 @@
     "validate:issue-9": "node scripts/validate-issue-9.mjs",
     "test": "jest",
     "test:serial": "jest --runInBand",
-    "test:unit": "jest --runInBand"
+    "test:unit": "jest --runInBand --testPathPatterns=\"src/repositories\""
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",
