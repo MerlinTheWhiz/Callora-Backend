@@ -1,4 +1,5 @@
-import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 
 type PrismaClientLike = {
   $disconnect: () => Promise<void>;
@@ -11,10 +12,9 @@ function getPrismaClient(): PrismaClientLike {
   if (!prisma) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
-      throw new Error('DATABASE_URL environment variable is required');
+      throw new Error("DATABASE_URL environment variable is required");
     }
     const adapter = new PrismaPg({ connectionString });
-    const { PrismaClient } = require('@prisma/client');
     prisma = new PrismaClient({ adapter }) as PrismaClientLike;
   }
   return prisma;
@@ -31,6 +31,6 @@ export default new Proxy({} as PrismaClientLike, {
   get(_target, prop, receiver) {
     const client = getPrismaClient();
     const value = Reflect.get(client, prop, receiver);
-    return typeof value === 'function' ? value.bind(client) : value;
+    return typeof value === "function" ? value.bind(client) : value;
   },
 });
