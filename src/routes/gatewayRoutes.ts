@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { startUpstreamTimer, type UpstreamOutcome } from '../metrics.js';
 import { validate } from '../middleware/validate.js';
 import type { GatewayDeps } from '../types/gateway.js';
+import { buildHopByHopSet } from '../lib/hopByHop.js';
 
 const CREDIT_COST_PER_CALL = 1;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -86,6 +87,8 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
       let upstreamBody = JSON.stringify({ error: 'Bad Gateway: upstream unreachable', requestId });
       let upstreamContentType = 'application/json; charset=utf-8';
       let outcome: UpstreamOutcome = 'error';
+      // Safe upstream response headers to forward (populated on success)
+      const upstreamResponseHeaders: Record<string, string> = {};
       const timer = startUpstreamTimer(req.params.apiId, req.method);
 
       try {
@@ -101,6 +104,18 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
         upstreamContentType =
           upstreamRes.headers.get('content-type') ?? 'application/octet-stream';
         outcome = 'success';
+
+        // Collect safe upstream response headers, stripping hop-by-hop headers
+        // (including any names listed in the upstream Connection header value).
+        const upstreamConnection = upstreamRes.headers.get('connection') ?? undefined;
+        const responseStripSet = buildHopByHopSet(upstreamConnection);
+        upstreamRes.headers.forEach((value, key) => {
+          const lower = key.toLowerCase();
+          // Also skip content-type — we set it explicitly below via res.type()
+          if (!responseStripSet.has(lower) && lower !== 'content-type') {
+            upstreamResponseHeaders[key] = value;
+          }
+        });
       } catch (error) {
         if (
           (error instanceof DOMException && error.name === 'TimeoutError') ||
@@ -130,6 +145,10 @@ export function createGatewayRouter(deps: GatewayDeps): Router {
       });
 
       res.set('x-request-id', requestId);
+      // Forward safe upstream response headers (hop-by-hop already stripped above)
+      for (const [key, value] of Object.entries(upstreamResponseHeaders)) {
+        res.set(key, value);
+      }
       res.status(upstreamStatus);
 
       if (upstreamContentType.toLowerCase().includes('application/json')) {
