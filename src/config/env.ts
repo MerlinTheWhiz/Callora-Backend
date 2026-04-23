@@ -103,13 +103,9 @@ export const envSchema = z
       .transform((v) => v === "true")
       .default(false),
 
-    // Bcrypt
-    BCRYPT_COST_FACTOR: z.coerce
-      .number()
-      .int()
-      .min(10, "BCRYPT_COST_FACTOR must be at least 10")
-      .max(31, "BCRYPT_COST_FACTOR must be at most 31")
-      .default(12),
+    // Body size limits
+    REQUEST_BODY_LIMIT: z.string().default('100kb'),
+    GATEWAY_BODY_LIMIT: z.string().default('1mb'),
   })
   .superRefine((values, ctx) => {
     if (values.SOROBAN_RPC_ENABLED && !values.SOROBAN_RPC_URL) {

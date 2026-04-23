@@ -11,6 +11,7 @@ export interface ApiKeyRecord {
   scopes: string[];
   rateLimitPerMinute: number | null;
   createdAt: Date;
+  revoked: boolean;
 }
 
 const apiKeys: ApiKeyRecord[] = [];
@@ -47,34 +48,34 @@ export const apiKeyRepository = {
     scopes: string[];
     rateLimitPerMinute: number | null;
   }): { key: string; prefix: string } {
-    if (!params || typeof params !== "object")
-      throw new TypeError("params must be an object");
+    const p = params || {} as any;
     const key = generatePlainKey();
     const prefix = key.slice(0, 16);
 
     apiKeys.push({
-      id: randomBytes(8).toString("hex"),
-      apiId: params.apiId,
-      userId: params.userId,
+      id: randomBytes(8).toString('hex'),
+      apiId: p.apiId,
+      userId: p.userId,
       prefix,
       keyHash: toHash(key),
-      scopes: params.scopes,
-      rateLimitPerMinute: params.rateLimitPerMinute,
+      scopes: p.scopes,
+      rateLimitPerMinute: p.rateLimitPerMinute,
       createdAt: new Date(),
+      revoked: false
     });
 
     return { key, prefix };
   },
-  revoke(id: string, userId: string): "success" | "not_found" | "forbidden" {
-    const index = apiKeys.findIndex((k) => k.id === id);
-    if (index === -1) return "not_found";
-    if (apiKeys[index].userId !== userId) return "forbidden";
+  revoke(id: string, userId: string): 'success' | 'not_found' | 'forbidden' {
+    const key = apiKeys.find(k => k.id === id);
+    if (!key) return 'not_found';
+    if (key.userId !== userId) return 'forbidden';
 
-    apiKeys.splice(index, 1);
-    return "success";
+    key.revoked = true;
+    return 'success';
   },
   verify(key: string): ApiKeyRecord | null {
-    if (typeof key !== "string" || key.length === 0) return null;
+    if (typeof key !== 'string') return null;
     // Find potential matches by prefix first for efficiency
     const prefix = key.slice(0, 16);
     const candidates = apiKeys.filter((k) =>
@@ -82,7 +83,7 @@ export const apiKeyRepository = {
     );
 
     for (const candidate of candidates) {
-      if (verifyHash(key, candidate.keyHash)) {
+      if (!candidate.revoked && verifyHash(key, candidate.keyHash)) {
         // Return a copy without sensitive data
         return {
           id: candidate.id,
@@ -93,22 +94,18 @@ export const apiKeyRepository = {
           scopes: candidate.scopes,
           rateLimitPerMinute: candidate.rateLimitPerMinute,
           createdAt: candidate.createdAt,
+          revoked: candidate.revoked
         };
       }
     }
 
     return null;
   },
-  rotate(
-    id: string,
-    userId: string,
-  ):
-    | { success: true; newKey: string; prefix: string }
-    | { success: false; error: "not_found" | "forbidden" } {
-    const index = apiKeys.findIndex((k) => k.id === id);
-    if (index === -1) return { success: false, error: "not_found" };
-    if (apiKeys[index].userId !== userId)
-      return { success: false, error: "forbidden" };
+  rotate(id: string, userId: string): { success: true; newKey: string; prefix: string } | { success: false; error: 'not_found' | 'forbidden' | 'revoked' } {
+    const index = apiKeys.findIndex(k => k.id === id);
+    if (index === -1) return { success: false, error: 'not_found' };
+    if (apiKeys[index].userId !== userId) return { success: false, error: 'forbidden' };
+    if (apiKeys[index].revoked) return { success: false, error: 'revoked' };
 
     // Generate new key
     const newKey = generatePlainKey();
@@ -121,7 +118,7 @@ export const apiKeyRepository = {
     return { success: true, newKey, prefix: newPrefix };
   },
   listForTesting(): ApiKeyRecord[] {
-    return [...apiKeys];
+    return apiKeys.map(k => ({ ...k }));
   },
   // Clear method for testing
   clear(): void {

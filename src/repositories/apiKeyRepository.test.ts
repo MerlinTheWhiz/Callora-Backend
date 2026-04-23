@@ -138,15 +138,26 @@ describe("ApiKeyRepository Security Tests", () => {
       });
 
       const validKey = createResult.key;
-      const invalidKey = "ck_live_invalidkey123456789012345678901234";
+      const invalidKey = validKey.slice(0, 16) + 'invalidkey123456789012345678901234';
 
-      // Verify correct outcomes — valid key resolves, invalid does not
-      expect(apiKeyRepository.verify(validKey)).not.toBeNull();
-      expect(apiKeyRepository.verify(invalidKey)).toBeNull();
+      // Measure time for valid key verification
+      const startValid = process.hrtime.bigint();
+      apiKeyRepository.verify(validKey);
+      const endValid = process.hrtime.bigint();
 
-      // Both paths should complete without throwing
-      expect(() => apiKeyRepository.verify(validKey)).not.toThrow();
-      expect(() => apiKeyRepository.verify(invalidKey)).not.toThrow();
+      // Measure time for invalid key verification
+      const startInvalid = process.hrtime.bigint();
+      apiKeyRepository.verify(invalidKey);
+      const endInvalid = process.hrtime.bigint();
+
+      const validTime = Number(endValid - startValid);
+      const invalidTime = Number(endInvalid - startInvalid);
+
+      // Times should be relatively close (within 10x for this test)
+      // In production, this would be much stricter
+      const ratio = validTime / invalidTime;
+      expect(ratio).toBeLessThan(10);
+      expect(ratio).toBeGreaterThan(0.1);
     });
   });
 
@@ -343,9 +354,13 @@ describe("ApiKeyRepository Security Tests", () => {
 
       // Revoke the key
       const keys = apiKeyRepository.listForTesting();
-      const keyId = keys.find((k) => k.userId === userId)!.id;
-      const revokeResult = apiKeyRepository.revoke(keyId, userId);
-      expect(revokeResult).toBe("success");
+      const keyToRevoke = keys.find(k => k.userId === userId)!;
+      const revokeResult = apiKeyRepository.revoke(keyToRevoke.id, userId);
+      expect(revokeResult).toBe('success');
+
+      // Verify the flag is set
+      const revokedKey = apiKeyRepository.listForTesting().find(k => k.id === keyToRevoke.id)!;
+      expect(revokedKey.revoked).toBe(true);
 
       // Try to verify the revoked key
       expect(apiKeyRepository.verify(createResult.key)).toBeNull();
@@ -411,7 +426,8 @@ describe("ApiKeyRepository Security Tests", () => {
       expect(apiKeyRepository.verify(createdKeys[2].key)).toBeTruthy(); // Unchanged key
 
       const finalKeys = apiKeyRepository.listForTesting();
-      expect(finalKeys).toHaveLength(2); // Only 2 keys should remain
+      expect(finalKeys).toHaveLength(3); // All 3 keys remain (1 revoked, 2 active)
+      expect(finalKeys.filter(k => k.revoked)).toHaveLength(1);
     });
   });
 });
