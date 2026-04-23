@@ -34,7 +34,7 @@ export function errorHandler(
       ? (err as { status: number }).status
       : 500;
 
-  const message =
+  const rawMessage =
     statusCode === 413
       ? 'Request body too large'
       : err instanceof Error
@@ -45,8 +45,8 @@ export function errorHandler(
   const requestId = (req as any).id || 'unknown';
 
   // Security: In production, mask the message for unexpected (non-AppError) errors
-  let message = err instanceof Error ? err.message : 'Internal server error';
-  if (isProduction && !isKnownError) {
+  let message = rawMessage;
+  if (isProduction && !isAppError(err)) {
     message = 'Internal server error';
   }
 
