@@ -43,10 +43,10 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   // hasn't run (e.g. isolated unit tests), and finally generate a UUID.
   const reqWithId = req as Request & { id?: string };
   const requestId =
-    reqWithId.id ??
+    req.id ||
     (Array.isArray(req.headers['x-request-id'])
       ? req.headers['x-request-id'][0]
-      : req.headers['x-request-id']) ??
+      : req.headers['x-request-id']) ||
     uuidv4();
 
   res.setHeader('x-request-id', requestId);
