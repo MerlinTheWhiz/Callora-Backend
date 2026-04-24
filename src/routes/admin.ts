@@ -14,7 +14,7 @@ router.use(adminAuth);
 
 router.get('/users', async (req, res, next) => {
   try {
-    const { limit, offset } = parsePagination(req.query as { limit?: string; offset?: string });
+    const { limit, offset } = parsePagination(req.query as Record<string, string>);
     const { users, total } = await findUsers({ limit, offset });
 
     logger.audit('LIST_USERS', res.locals.adminActor, { limit, offset, count: users.length, total });
