@@ -20,8 +20,9 @@ export function createDeveloperRouter(deps: DeveloperRoutesDeps): Router {
     limit: z
       .string()
       .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 20))
-      .pipe(z.number().int().min(1).max(100)),
+      .transform((val) => val ? parseInt(val, 10) : 20)
+      .pipe(z.number().int())
+      .transform((val) => Math.min(Math.max(val, 1), 100)),
     offset: z
       .string()
       .optional()
