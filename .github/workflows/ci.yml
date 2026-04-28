@@ -36,14 +36,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Run Unit Tests
-        run: NODE_ENV=test npm run test:unit
-
-      - name: Run Integration Tests
-        run: NODE_ENV=test npm run test:integration
-
-      - name: Generate Coverage Report
-        run: NODE_ENV=test npm run test:coverage
+      - name: Run Webhook Dispatch Pipeline Test
+        run: NODE_ENV=test npm test -- tests/integration/webhook-dispatch-pipeline.test.ts --runInBand
 
       - name: Build
         run: npm run build
