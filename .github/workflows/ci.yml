@@ -36,8 +36,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Run Stellar Config Validation Tests
-        run: NODE_ENV=test npm test -- src/config/__tests__/config.test.ts --runInBand
+      - name: Run Webhook Dispatch Pipeline Test
+        run: NODE_ENV=test npm test -- tests/integration/webhook-dispatch-pipeline.test.ts --runInBand
 
       - name: Build
         run: npm run build

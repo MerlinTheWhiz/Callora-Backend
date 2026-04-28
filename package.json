@@ -12,9 +12,11 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "validate:issue-9": "node scripts/validate-issue-9.mjs",
-    "test": "jest",
-    "test:serial": "jest --runInBand",
-    "test:unit": "jest --runInBand"
+    "test": "jest --forceExit",
+    "test:serial": "jest --runInBand --forceExit",
+    "test:unit": "jest --runInBand --forceExit --testPathIgnorePatterns tests/integration",
+    "test:integration": "jest --runInBand --forceExit tests/integration",
+    "test:coverage": "jest --runInBand --coverage --forceExit --testPathIgnorePatterns tests/integration"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",
